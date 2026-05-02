@@ -132,6 +132,40 @@
   .btn:active { background: #c9a84c; color: #2b1810; }
   .btn:disabled { opacity: 0.3; pointer-events: none; }
 
+  /* Menu */
+  #menu-btn {
+    background: none; border: 1px solid #c9a84c; color: #c9a84c;
+    font-size: 18px; padding: 2px 8px; border-radius: 4px; cursor: pointer;
+    line-height: 1;
+  }
+  #menu-btn:active { background: #c9a84c; color: #0e0a04; }
+  #menu-panel {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.92);
+    z-index: 150; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+  }
+  #menu-panel.show { display: flex; }
+  .menu-item {
+    width: 220px; padding: 14px; border: 2px solid #c9a84c; background: #2b1810;
+    color: #f5f0e8; font-family: Georgia, serif; font-size: 15px; font-weight: bold;
+    border-radius: 8px; cursor: pointer; text-align: center; text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .menu-item:active { background: #c9a84c; color: #2b1810; }
+  .menu-item.danger { border-color: #a33; color: #e66; }
+  .menu-item.danger:active { background: #a33; color: #fff; }
+  #session-id { font-size: 10px; color: #c9a84c; opacity: 0.5; margin-top: 8px; }
+  #saves-list {
+    max-height: 200px; overflow-y: auto; width: 220px;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .save-entry {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 10px; background: #1a1008; border: 1px solid #555;
+    border-radius: 6px; cursor: pointer; font-size: 12px; color: #f5f0e8;
+  }
+  .save-entry:active { background: #c9a84c; color: #0e0a04; }
+  .save-date { font-size: 10px; opacity: 0.5; }
+
   /* Overlay */
   #overlay {
     display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.94);
@@ -160,6 +194,7 @@
       <span id="pbag" class="bag-count">(16 in bag)</span>
     </div>
     <div id="pmarkers" class="markers">Markers: 12</div>
+    <button id="menu-btn" onclick="toggleMenu()">&#9776;</button>
   </div>
 
   <div id="board-container">
@@ -179,6 +214,16 @@
     </div>
   </div>
 
+  <div id="menu-panel">
+    <div style="font-size:22px;color:#c9a84c;font-weight:bold;margin-bottom:8px">CAESAR!</div>
+    <div id="session-id"></div>
+    <button class="menu-item" onclick="saveGame()">Save Game</button>
+    <button class="menu-item" onclick="showLoads()">Load Game</button>
+    <div id="saves-list"></div>
+    <button class="menu-item danger" onclick="newGame()">New Game</button>
+    <button class="menu-item" onclick="toggleMenu()">Resume</button>
+  </div>
+
   <div id="overlay">
     <h2 id="ov-text">Pass device to Pompey</h2>
     <p>Tap when ready</p>
@@ -186,6 +231,88 @@
 </div>
 
 <script>
+// ── Session & Persistence ───────────────────────────────────
+let SESSION = localStorage.getItem('caesar_session') || newSessionId();
+
+function newSessionId() {
+  const id = Math.random().toString(36).slice(2,8).toUpperCase();
+  localStorage.setItem('caesar_session', id);
+  return id;
+}
+
+function getStateSnapshot() {
+  return JSON.stringify({
+    cp:S.cp, bags:S.bags, hands:S.hands, board:S.board,
+    markers:S.markers, bonus:S.bonus, mrem:S.mrem
+  });
+}
+
+function autosave() {
+  localStorage.setItem('caesar_auto_'+SESSION, getStateSnapshot());
+  localStorage.setItem('caesar_auto_ts_'+SESSION, Date.now().toString());
+}
+
+function saveGame() {
+  const key = 'caesar_save_'+Date.now();
+  const saves = JSON.parse(localStorage.getItem('caesar_saves')||'[]');
+  saves.unshift({ key, session: SESSION, ts: Date.now() });
+  if(saves.length>10) { localStorage.removeItem(saves.pop().key); }
+  localStorage.setItem('caesar_saves', JSON.stringify(saves));
+  localStorage.setItem(key, getStateSnapshot());
+  toggleMenu();
+}
+
+function showLoads() {
+  const saves = JSON.parse(localStorage.getItem('caesar_saves')||'[]');
+  const el = document.getElementById('saves-list');
+  // Also check for autosaves
+  const allKeys = Object.keys(localStorage).filter(k=>k.startsWith('caesar_auto_')&&!k.includes('_ts_'));
+  let h = '';
+  // Manual saves
+  for(const s of saves) {
+    const d = new Date(s.ts);
+    const label = d.toLocaleDateString()+' '+d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+    h += `<div class="save-entry" onclick="loadGame('${s.key}')">${s.session} <span class="save-date">${label}</span></div>`;
+  }
+  // Autosaves
+  for(const k of allKeys) {
+    const sid = k.replace('caesar_auto_','');
+    const ts = parseInt(localStorage.getItem('caesar_auto_ts_'+sid)||'0');
+    if(!ts) continue;
+    const d = new Date(ts);
+    const label = d.toLocaleDateString()+' '+d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+    const isCurrent = sid===SESSION?' (current)':'';
+    h += `<div class="save-entry" onclick="loadGame('${k}')">${sid}${isCurrent} <span class="save-date">${label} auto</span></div>`;
+  }
+  if(!h) h='<div style="text-align:center;opacity:0.4;padding:10px">No saves</div>';
+  el.innerHTML = h;
+}
+
+function loadGame(key) {
+  const data = localStorage.getItem(key);
+  if(!data) return;
+  const snap = JSON.parse(data);
+  S.cp=snap.cp; S.bags=snap.bags; S.hands=snap.hands; S.board=snap.board;
+  S.markers=snap.markers; S.bonus=snap.bonus; S.mrem=snap.mrem;
+  S.sel=null; S.selMarker=false;
+  toggleMenu();
+  render();
+}
+
+function newGame() {
+  if(!confirm('Start new game? Current progress is autosaved.')) return;
+  SESSION = newSessionId();
+  toggleMenu();
+  freshGame();
+}
+
+function toggleMenu() {
+  const mp = document.getElementById('menu-panel');
+  mp.classList.toggle('show');
+  document.getElementById('session-id').textContent = 'Session: '+SESSION;
+  document.getElementById('saves-list').innerHTML = '';
+}
+
 // ── Config ──────────────────────────────────────────────────
 const DEBUG = false; // set true to show slot IDs and coordinates
 
@@ -347,6 +474,22 @@ function shuffle(a) {
 }
 
 function init() {
+  // Try restoring autosave for current session
+  const auto = localStorage.getItem('caesar_auto_'+SESSION);
+  if(auto) {
+    try {
+      const snap = JSON.parse(auto);
+      S.cp=snap.cp; S.bags=snap.bags; S.hands=snap.hands; S.board=snap.board;
+      S.markers=snap.markers; S.bonus=snap.bonus; S.mrem=snap.mrem;
+      S.sel=null; S.selMarker=false;
+      render();
+      return;
+    } catch(e) { /* fall through to fresh game */ }
+  }
+  freshGame();
+}
+
+function freshGame() {
   S.cp=0;
   S.bags=[shuffle(makeTokens()),shuffle(makeTokens())];
   S.hands=[[],[]];
@@ -364,6 +507,7 @@ function init() {
     if(i===8) S.bonus.push({type:'Senate',pi:i,claimed:false});
     else if(types.length) S.bonus.push({type:types.pop(),pi:i,claimed:false});
   }
+  autosave();
   render();
 }
 
@@ -393,7 +537,7 @@ function draw() {
   if(!S.bags[S.cp].length) return;
   S.hands[S.cp].push({...S.bags[S.cp].pop(), rot:false});
   S.sel=null; S.selMarker=false;
-  render();
+  autosave(); render();
 }
 
 function rotate() {
@@ -422,7 +566,7 @@ function placeOnSlot(sid) {
     if(b.pl!==S.cp) return; // can't pick up opponent's token
     S.hands[S.cp].push({type:b.tok.type, v:[...b.tok.v], rot:b.rot});
     S.board.splice(ex,1);
-    S.sel=null; render();
+    S.sel=null; autosave(); render();
     return;
   }
   // Place selected
@@ -430,7 +574,7 @@ function placeOnSlot(sid) {
   const t=S.hands[S.cp][S.sel];
   S.board.push({tok:{type:t.type,v:[...t.v]}, slotId:sid, rot:t.rot, pl:S.cp});
   S.hands[S.cp].splice(S.sel,1);
-  S.sel=null; render();
+  S.sel=null; autosave(); render();
 }
 
 function boardClick(e) {
@@ -450,7 +594,7 @@ function boardClick(e) {
     S.markers.push({pl:S.cp, x:pct.x, y:pct.y});
     S.mrem[S.cp]--;
     S.sel=null; S.selMarker=false;
-    render(); return;
+    autosave(); render(); return;
   }
 
   // Pick up marker
@@ -461,7 +605,7 @@ function boardClick(e) {
     if(Math.hypot(cx-mp.x,cy-mp.y)<16) {
       S.markers.splice(i,1);
       S.mrem[S.cp]++;
-      render(); return;
+      autosave(); render(); return;
     }
   }
 
@@ -472,7 +616,7 @@ function boardClick(e) {
     const bp=p2px(pr.x,pr.y);
     if(Math.hypot(cx-bp.x,cy-bp.y)<16) {
       b.claimed=true;
-      render(); return;
+      autosave(); render(); return;
     }
   }
 }
@@ -483,7 +627,7 @@ function endTurn() {
   document.getElementById('ov-text').textContent=`Pass device to ${P[next].name}`;
   const ov=document.getElementById('overlay');
   ov.classList.add('show');
-  ov.onclick=()=>{ ov.classList.remove('show'); S.cp=next; render(); };
+  ov.onclick=()=>{ ov.classList.remove('show'); S.cp=next; autosave(); render(); };
 }
 
 function reset() { if(confirm('Reset game?')) init(); }
@@ -505,7 +649,7 @@ function touchStart(e) {
     const sp=p2px(sl.x,sl.y);
     if(Math.hypot(cx-sp.x,cy-sp.y)<22) {
       lpid=b.slotId;
-      lpt=setTimeout(()=>{ b.rot=!b.rot; lpt=null; lpid=null; render(); },400);
+      lpt=setTimeout(()=>{ b.rot=!b.rot; lpt=null; lpid=null; autosave(); render(); },400);
       return;
     }
   }

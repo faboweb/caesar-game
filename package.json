@@ -1,0 +1,23 @@
+{
+  "name": "caesar",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/faboweb/caesar-game.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/faboweb/caesar-game/issues"
+  },
+  "homepage": "https://github.com/faboweb/caesar-game#readme",
+  "devDependencies": {
+    "@playwright/test": "^1.59.1"
+  }
+}

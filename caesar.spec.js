@@ -174,7 +174,7 @@ test.describe('Caesar! Virtual Tabletop', () => {
 
     // Token removed from hand, appears on board
     await expect(page.locator('.hand-token')).toHaveCount(0);
-    const placed = page.locator('g.hit[data-s]');
+    const placed = page.locator('.chip-placed[data-s]');
     expect(await placed.count()).toBeGreaterThan(0);
   });
 
@@ -190,7 +190,7 @@ test.describe('Caesar! Virtual Tabletop', () => {
     expect(await page.locator('.hand-token').count()).toBe(0);
 
     // Click the placed token to pick it up (immediate)
-    await page.locator(`g.hit[data-s="${slotId}"]`).click();
+    await page.locator(`.chip-placed[data-s="${slotId}"]`).click();
 
     // Token back in hand
     expect(await page.locator('.hand-token').count()).toBe(1);
@@ -257,7 +257,7 @@ test.describe('Caesar! Virtual Tabletop', () => {
     expect(markersAfter).toContain('11');
 
     // Marker visible on board SVG
-    const markerEls = page.locator('g.hit[data-mi]');
+    const markerEls = page.locator('.chip-marker[data-mi]');
     expect(await markerEls.count()).toBe(1);
   });
 
@@ -272,23 +272,23 @@ test.describe('Caesar! Virtual Tabletop', () => {
     expect(await page.locator('#pmarkers').textContent()).toContain('11');
 
     // Click the marker to pick it up
-    const marker = page.locator('g.hit[data-mi]').first();
+    const marker = page.locator('.chip-marker[data-mi]').first();
     await marker.click();
     expect(await page.locator('#pmarkers').textContent()).toContain('12');
   });
 
   test('bonus tokens visible on board', async ({ page }) => {
-    const bonuses = page.locator('circle[data-bi]');
+    const bonuses = page.locator('.chip-bonus[data-bi]');
     const count = await bonuses.count();
     // Should have bonus tokens on provinces (up to 18, at least some)
     expect(count).toBeGreaterThan(5);
   });
 
   test('claim bonus token by clicking', async ({ page }) => {
-    const bonusesBefore = await page.locator('circle[data-bi]').count();
-    const firstBonus = page.locator('circle[data-bi]').first();
+    const bonusesBefore = await page.locator('.chip-bonus[data-bi]').count();
+    const firstBonus = page.locator('.chip-bonus[data-bi]').first();
     await firstBonus.click();
-    const bonusesAfter = await page.locator('circle[data-bi]').count();
+    const bonusesAfter = await page.locator('.chip-bonus[data-bi]').count();
     expect(bonusesAfter).toBe(bonusesBefore - 1);
   });
 
@@ -443,10 +443,10 @@ test.describe('Caesar! Virtual Tabletop', () => {
 
   test('cannot place token without selecting one first', async ({ page }) => {
     // Click a slot without selecting a token — nothing should happen
-    const slot = page.locator('circle[data-s]').first();
+    const slot = page.locator('.chip-slot[data-s]').first();
     await slot.click();
     // No tokens placed
-    const placed = page.locator('g.hit[data-s]');
+    const placed = page.locator('.chip-placed[data-s]');
     expect(await placed.count()).toBe(0);
   });
 
@@ -480,7 +480,7 @@ test.describe('Caesar! Virtual Tabletop', () => {
     await page.locator('#overlay').click();
 
     // Token should still be on board
-    const placed = page.locator('g.hit[data-s]');
+    const placed = page.locator('.chip-placed[data-s]');
     expect(await placed.count()).toBeGreaterThan(0);
   });
 });

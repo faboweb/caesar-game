@@ -54,22 +54,86 @@
   #board-wrap {
     position: relative;
     display: inline-block;
+    height: 100%;
   }
   #board-img {
     display: block;
+    height: 100%;
     width: auto;
-    height: auto;
     max-width: 100%;
-    max-height: 100%;
   }
   #board-overlay {
     position: absolute;
     top: 0; left: 0;
     width: 100%; height: 100%;
     pointer-events: none;
-    overflow: visible;
   }
-  #board-overlay .hit { pointer-events: all; cursor: pointer; }
+  .chip {
+    position: absolute;
+    transform: translate(-50%,-50%);
+    pointer-events: all;
+    cursor: pointer;
+    border-radius: 50%;
+  }
+  /* Chip sizes use CSS custom property --cs set by JS based on actual image size */
+  .chip-slot {
+    width: var(--cs); height: var(--cs);
+  }
+  .chip-slot.avail {
+    background: rgba(201,168,76,0.35);
+    border: 1.5px solid #c9a84c;
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+  .chip-slot.empty {
+    background: transparent;
+  }
+  .chip-placed {
+    width: var(--cs); height: var(--cs);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid #c9a84c;
+    overflow: hidden;
+  }
+  .chip-placed .cv {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: calc(var(--cs) * 0.45);
+    font-weight: bold;
+    color: #f5f0e8;
+    height: 100%;
+    font-family: Georgia, serif;
+  }
+  .chip-placed .cv-l { border-right: 1.5px solid #c9a84c; }
+  .chip-marker {
+    width: calc(var(--cs) * 0.7); height: calc(var(--cs) * 0.7);
+    border: 1.5px solid #c9a84c;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: calc(var(--cs) * 0.35);
+    font-weight: bold;
+    color: #c9a84c;
+    font-family: Georgia, serif;
+  }
+  .chip-supply {
+    width: calc(var(--cs) * 0.55); height: calc(var(--cs) * 0.55);
+    border: 1px solid #c9a84c;
+    opacity: 0.9;
+  }
+  .chip-bonus {
+    width: calc(var(--cs) * 0.8); height: calc(var(--cs) * 0.8);
+    background: #d4b44c;
+    border: 1.5px solid #8a7428;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: calc(var(--cs) * 0.4);
+  }
+  .bg-caesar { background: #8b1a1a; }
+  .bg-pompey { background: #1a3a6b; }
 
   /* Hand panel */
   #hand-panel {
@@ -240,7 +304,7 @@
   <div id="board-container">
     <div id="board-wrap">
       <img id="board-img" src="caesar-board.jpg" alt="Board">
-      <svg id="board-overlay"></svg>
+      <div id="board-overlay"></div>
     </div>
   </div>
 
@@ -367,7 +431,7 @@ function toggleMenu() {
 }
 
 // ── Config ──────────────────────────────────────────────────
-const DEBUG = false; // set true to show slot IDs and coordinates
+const DEBUG=false; // set true to show slot IDs and coordinates
 
 const P = [
   { name: 'Caesar', cls: 'caesar', bg: '#8b1a1a', hi: '#e55' },
@@ -378,99 +442,96 @@ const P = [
 // Carefully mapped from the board photo. Each slot is a circle on a border.
 // type: Sword/Shield/Ship  provinces: [sideA, sideB] for orientation label
 const SLOTS = [
-  // ── Hispania Ulterior ↔ Hispania Citerior (top row, ~3 slots) ──
-  { id:0,  x:27, y:6,  type:'Shield', p:['H.Ult','H.Cit'] },
-  { id:1,  x:33, y:6,  type:'Sword',  p:['H.Ult','H.Cit'] },
-  { id:2,  x:39, y:6,  type:'Ship',   p:['H.Ult','H.Cit'] },
+  // Hispania Ulterior ↔ Hispania Citerior (3 slots horizontal)
+  { id:0,  x:36.6, y:5.1,  type:'Shield', p:['H.Ult','H.Cit'] },
+  { id:1,  x:41.4, y:5.1,  type:'Sword',  p:['H.Ult','H.Cit'] },
+  { id:2,  x:46.1, y:5.1,  type:'Ship',   p:['H.Ult','H.Cit'] },
 
-  // ── Hispania Ulterior ↔ Mauritania (left, 2 slots) ──
-  { id:3,  x:16, y:10, type:'Ship',   p:['H.Ult','Maur'] },
-  { id:4,  x:16, y:15, type:'Sword',  p:['H.Ult','Maur'] },
+  // Hispania Ulterior ↔ Mauritania (2 slots vertical)
+  { id:3,  x:20.1, y:10.0, type:'Ship',   p:['H.Ult','Maur'] },
+  { id:4,  x:20.1, y:13.7, type:'Sword',  p:['H.Ult','Maur'] },
 
-  // ── Hispania Citerior ↔ Sardinia (sea, 1 slot) ──
-  { id:5,  x:40, y:12, type:'Ship',   p:['H.Cit','Sard'] },
+  // Hispania Citerior ↔ Sardinia (sea, 1 slot)
+  { id:5,  x:46.1, y:11.8, type:'Ship',   p:['H.Cit','Sard'] },
 
-  // ── Hispania Citerior ↔ Gallia (sea top-right, 1 slot) ──
-  { id:6,  x:62, y:7,  type:'Ship',   p:['H.Cit','Gall'] },
+  // Hispania Citerior ↔ Gallia (sea, 1 slot)
+  { id:6,  x:68.6, y:7.3,  type:'Ship',   p:['H.Cit','Gall'] },
 
-  // ── Mauritania ↔ Sardinia (sea, 1 slot) ──
-  { id:7,  x:28, y:17, type:'Ship',   p:['Maur','Sard'] },
+  // Mauritania ↔ Sardinia (sea, 1 slot)
+  { id:7,  x:36.6, y:17.3, type:'Ship',   p:['Maur','Sard'] },
 
-  // ── Mauritania ↔ Numidia (left, 2 slots) ──
-  { id:8,  x:14, y:22, type:'Sword',  p:['Maur','Num'] },
-  { id:9,  x:20, y:22, type:'Shield', p:['Maur','Num'] },
+  // Mauritania ↔ Numidia (2 slots horizontal)
+  { id:8,  x:21.3, y:21.9, type:'Sword',  p:['Maur','Num'] },
+  { id:9,  x:26.0, y:21.9, type:'Shield', p:['Maur','Num'] },
 
-  // ── Gallia ↔ Gallia Cisalpina (right, 2 slots) ──
-  { id:10, x:82, y:12, type:'Sword',  p:['Gall','G.Cis'] },
-  { id:11, x:82, y:17, type:'Shield', p:['Gall','G.Cis'] },
+  // Gallia ↔ Gallia Cisalpina (2 slots vertical)
+  { id:10, x:86.3, y:11.8, type:'Sword',  p:['Gall','G.Cis'] },
+  { id:11, x:86.3, y:15.5, type:'Shield', p:['Gall','G.Cis'] },
 
-  // ── Sardinia ↔ Gallia Cisalpina (sea, 1 slot) ──
-  { id:12, x:56, y:15, type:'Ship',   p:['Sard','G.Cis'] },
+  // Sardinia ↔ Gallia Cisalpina (sea, 1 slot)
+  { id:12, x:63.8, y:15.5, type:'Ship',   p:['Sard','G.Cis'] },
 
-  // ── Sardinia ↔ Sicilia (sea, 1 slot) ──
-  { id:13, x:38, y:24, type:'Ship',   p:['Sard','Sic'] },
+  // Sardinia ↔ Sicilia (sea, 1 slot)
+  { id:13, x:46.1, y:24.6, type:'Ship',   p:['Sard','Sic'] },
 
-  // ── Numidia ↔ Sicilia (sea, 1 slot) ──
-  { id:14, x:30, y:30, type:'Ship',   p:['Num','Sic'] },
+  // Numidia ↔ Sicilia (sea, 1 slot)
+  { id:14, x:36.6, y:30.1, type:'Ship',   p:['Num','Sic'] },
 
-  // ── Numidia ↔ Africa (left, 2 slots) ──
-  { id:15, x:8,  y:34, type:'Sword',  p:['Num','Afr'] },
-  { id:16, x:14, y:34, type:'Shield', p:['Num','Afr'] },
+  // Numidia ↔ Africa (2 slots horizontal)
+  { id:15, x:13.0, y:34.6, type:'Sword',  p:['Num','Afr'] },
+  { id:16, x:17.7, y:34.6, type:'Shield', p:['Num','Afr'] },
 
-  // ── Sicilia ↔ Italia (center, 2 slots) ──
-  { id:17, x:48, y:30, type:'Ship',   p:['Sic','Ital'] },
-  { id:18, x:54, y:30, type:'Shield', p:['Sic','Ital'] },
+  // Sicilia ↔ Italia (2 slots horizontal)
+  { id:17, x:54.4, y:31.9, type:'Ship',   p:['Sic','Ital'] },
+  { id:18, x:59.6, y:31.9, type:'Shield', p:['Sic','Ital'] },
 
-  // ── G.Cisalpina ↔ Italia (right, 1 slot) ──
-  { id:19, x:66, y:25, type:'Sword',  p:['G.Cis','Ital'] },
+  // G.Cisalpina ↔ Italia (1 slot)
+  { id:19, x:73.3, y:25.5, type:'Sword',  p:['G.Cis','Ital'] },
 
-  // ── G.Cisalpina ↔ Dalmatia (far right, 1 slot) ──
-  { id:20, x:84, y:28, type:'Shield', p:['G.Cis','Dalm'] },
+  // G.Cisalpina ↔ Dalmatia (1 slot)
+  { id:20, x:88.7, y:28.2, type:'Shield', p:['G.Cis','Dalm'] },
 
-  // ── Italia ↔ Dalmatia (sea, 1 slot) ──
-  { id:21, x:74, y:34, type:'Ship',   p:['Ital','Dalm'] },
+  // Italia ↔ Dalmatia (sea, 1 slot)
+  { id:21, x:80.4, y:34.6, type:'Ship',   p:['Ital','Dalm'] },
 
-  // ── Italia ↔ Achaia (sea, 1 slot) ──
-  { id:22, x:54, y:39, type:'Ship',   p:['Ital','Ach'] },
+  // Italia ↔ Achaia (sea, 1 slot)
+  { id:22, x:61.5, y:39.2, type:'Ship',   p:['Ital','Ach'] },
 
-  // ── Dalmatia ↔ Macedonia (right, 1 slot) ──
-  { id:23, x:86, y:42, type:'Sword',  p:['Dalm','Mac'] },
+  // Dalmatia ↔ Macedonia (1 slot)
+  { id:23, x:91.0, y:41.0, type:'Sword',  p:['Dalm','Mac'] },
 
-  // ── Africa ↔ Sicilia (sea, 1 slot) ──
-  { id:24, x:22, y:38, type:'Ship',   p:['Afr','Sic'] },
+  // Africa ↔ Sicilia (sea, 1 slot)
+  { id:24, x:28.4, y:38.3, type:'Ship',   p:['Afr','Sic'] },
 
-  // ── Africa ↔ Cyrene (left, 1 slot) ──
-  { id:25, x:8,  y:48, type:'Sword',  p:['Afr','Cyr'] },
+  // Africa ↔ Cyrene (1 slot)
+  { id:25, x:11.8, y:47.4, type:'Sword',  p:['Afr','Cyr'] },
 
-  // ── Achaia ↔ Macedonia (center-right, 1 slot) ──
-  { id:26, x:66, y:48, type:'Shield', p:['Ach','Mac'] },
+  // Achaia ↔ Macedonia (1 slot)
+  { id:26, x:73.3, y:48.3, type:'Shield', p:['Ach','Mac'] },
 
-  // ── Achaia ↔ Cyrene (sea, 1 slot) ──
-  { id:27, x:24, y:52, type:'Ship',   p:['Ach','Cyr'] },
+  // Achaia ↔ Cyrene (sea, 1 slot)
+  { id:27, x:30.7, y:51.0, type:'Ship',   p:['Ach','Cyr'] },
 
-  // ── Achaia ↔ Creta (sea, 1 slot) ──
-  { id:28, x:42, y:56, type:'Ship',   p:['Ach','Cret'] },
+  // Achaia ↔ Creta (sea, 1 slot)
+  { id:28, x:50.8, y:55.6, type:'Ship',   p:['Ach','Cret'] },
 
-  // ── Creta ↔ Aegyptus (sea, 1 slot) ──
-  { id:29, x:28, y:66, type:'Ship',   p:['Cret','Aeg'] },
+  // Creta ↔ Aegyptus (sea, 1 slot)
+  { id:29, x:37.8, y:64.7, type:'Ship',   p:['Cret','Aeg'] },
 
-  // ── Creta ↔ Asia (sea, 1 slot) ──
-  { id:30, x:54, y:63, type:'Ship',   p:['Cret','Asia'] },
+  // Creta ↔ Asia (sea, 1 slot)
+  { id:30, x:63.8, y:61.9, type:'Ship',   p:['Cret','Asia'] },
 
-  // ── Cyrene ↔ Aegyptus (left, 1 slot) ──
-  { id:31, x:12, y:64, type:'Sword',  p:['Cyr','Aeg'] },
+  // Cyrene ↔ Aegyptus (1 slot)
+  { id:31, x:14.2, y:62.8, type:'Sword',  p:['Cyr','Aeg'] },
 
-  // ── Asia ↔ Macedonia (sea, 1 slot) ──
-  { id:32, x:74, y:58, type:'Ship',   p:['Asia','Mac'] },
+  // Asia ↔ Macedonia (sea, 1 slot)
+  { id:32, x:80.4, y:56.5, type:'Ship',   p:['Asia','Mac'] },
 
-  // ── Aegyptus ↔ Syria (bottom-left, 1 slot) ──
-  { id:33, x:24, y:84, type:'Sword',  p:['Aeg','Syr'] },
+  // Aegyptus ↔ Syria (1 slot)
+  { id:33, x:34.3, y:80.1, type:'Sword',  p:['Aeg','Syr'] },
 
-  // ── Asia ↔ Syria (bottom-right, 1 slot) ──
-  { id:34, x:62, y:80, type:'Shield', p:['Asia','Syr'] },
-
-  // ── Aegyptus ↔ Asia? or Aegyptus ↔ Creta extra? ──
-  // Additional slots I may have missed - these can be added after visual check
+  // Asia ↔ Syria (1 slot)
+  { id:34, x:73.3, y:76.5, type:'Shield', p:['Asia','Syr'] },
 ];
 
 // Province bonus-token center positions
@@ -585,15 +646,6 @@ function freshGame() {
 // Slot coords are in (x%, y%) of image dimensions.
 // viewBox = "0 0 <aspectW> 100" where aspectW = naturalWidth/naturalHeight * 100
 
-let VBW = 77; // default, updated on image load
-
-function setupSvgViewBox() {
-  const img = document.getElementById('board-img');
-  if (!img || !img.naturalWidth) return;
-  VBW = (img.naturalWidth / img.naturalHeight) * 100;
-  const svg = document.getElementById('board-overlay');
-  svg.setAttribute('viewBox', `0 0 ${VBW} 100`);
-}
 
 function getImgRect() {
   const img=document.getElementById('board-img');
@@ -608,9 +660,6 @@ function clickToPct(clientX, clientY) {
 }
 
 // Convert our percentage-based coords to SVG viewBox coords
-function pctToVB(xPct, yPct) {
-  return { x: xPct / 100 * VBW, y: yPct };
-}
 
 // ── Actions ─────────────────────────────────────────────────
 function draw() {
@@ -794,7 +843,16 @@ function reset() { if(confirm('Reset game?')) init(); }
 // Touch gestures are handled via Hammer.js — see event wiring section
 
 // ── Render ──────────────────────────────────────────────────
+function updateChipSize() {
+  const img=document.getElementById('board-img');
+  if(!img) return;
+  // Chip size = ~4.2% of image height in pixels — always a circle
+  const cs=img.offsetHeight*0.042;
+  document.getElementById('board-overlay').style.setProperty('--cs', cs+'px');
+}
+
 function render() {
+  updateChipSize();
   const p=S.cp, pl=P[p];
 
   // Header
@@ -813,25 +871,19 @@ function render() {
 }
 
 function renderOverlay() {
-  const svg=document.getElementById('board-overlay');
+  const ov=document.getElementById('board-overlay');
   const hasSel=S.sel!==null&&!S.selMarker;
   let h='';
-  const R=1.8; // token radius in viewBox units
 
   // Slot targets
   for(const s of SLOTS) {
-    const p=pctToVB(s.x,s.y);
     const occ=S.board.some(b=>b.slotId===s.id);
-    if(!occ && hasSel) {
-      h+=`<circle class="hit slot-avail" cx="${p.x}" cy="${p.y}" r="${R}"
-        fill="rgba(201,168,76,0.35)" stroke="#c9a84c" stroke-width="0.3"
-        data-s="${s.id}"/>`;
-    } else if(!occ) {
-      h+=`<circle class="hit" cx="${p.x}" cy="${p.y}" r="${R}"
-        fill="transparent" data-s="${s.id}"/>`;
+    if(!occ) {
+      const cls=hasSel?'chip chip-slot avail':'chip chip-slot empty';
+      h+=`<div class="${cls}" style="left:${s.x}%;top:${s.y}%" data-s="${s.id}"></div>`;
     }
     if(DEBUG) {
-      h+=`<text class="debug-label" x="${p.x+2}" y="${p.y+0.5}" font-size="1.2">${s.id}</text>`;
+      h+=`<div style="position:absolute;left:${s.x}%;top:${s.y}%;color:#ff0;font-size:8px;pointer-events:none;transform:translate(8px,-4px);z-index:5">${s.id}</div>`;
     }
   }
 
@@ -839,36 +891,26 @@ function renderOverlay() {
   for(const b of S.board) {
     const sl=SLOTS.find(s=>s.id===b.slotId);
     if(!sl) continue;
-    const p=pctToVB(sl.x,sl.y);
-    const c=P[b.pl];
+    const bg=b.pl===0?'bg-caesar':'bg-pompey';
     const v=b.rot?[b.tok.v[1],b.tok.v[0]]:b.tok.v;
-    h+=`<g class="hit" data-s="${b.slotId}">`;
-    h+=`<circle cx="${p.x}" cy="${p.y}" r="${R}" fill="${c.bg}" stroke="#c9a84c" stroke-width="0.3"/>`;
-    h+=`<line x1="${p.x}" y1="${p.y-R}" x2="${p.x}" y2="${p.y+R}" stroke="#c9a84c" stroke-width="0.2"/>`;
-    h+=`<text x="${p.x-R*.45}" y="${p.y+0.6}" text-anchor="middle" fill="#f5f0e8" font-size="1.6" font-weight="bold" font-family="Georgia">${v[0]}</text>`;
-    h+=`<text x="${p.x+R*.45}" y="${p.y+0.6}" text-anchor="middle" fill="#f5f0e8" font-size="1.6" font-weight="bold" font-family="Georgia">${v[1]}</text>`;
-    h+=`</g>`;
+    h+=`<div class="chip chip-placed ${bg}" style="left:${sl.x}%;top:${sl.y}%" data-s="${b.slotId}">`;
+    h+=`<div class="cv cv-l">${v[0]}</div><div class="cv">${v[1]}</div></div>`;
   }
 
   // Control markers on board
   for(let i=0;i<S.markers.length;i++) {
     const m=S.markers[i];
-    const p=pctToVB(m.x,m.y);
-    h+=`<g class="hit" data-mi="${i}">`;
-    h+=`<circle cx="${p.x}" cy="${p.y}" r="1.4" fill="${P[m.pl].bg}" stroke="#c9a84c" stroke-width="0.3"/>`;
-    h+=`<text x="${p.x}" y="${p.y+0.5}" text-anchor="middle" fill="#c9a84c" font-size="1.2" font-weight="bold" font-family="Georgia">M</text>`;
-    h+=`</g>`;
+    const bg=m.pl===0?'bg-caesar':'bg-pompey';
+    h+=`<div class="chip chip-marker ${bg}" style="left:${m.x}%;top:${m.y}%" data-mi="${i}">M</div>`;
   }
 
-  // Supply markers (unplaced) — shown at their supply positions on the board
+  // Supply markers
   for(let pl=0;pl<2;pl++) {
     const positions=MARKER_SUPPLY[pl];
+    const bg=pl===0?'bg-caesar':'bg-pompey';
     for(let mi=0;mi<S.mrem[pl]&&mi<positions.length;mi++) {
       const pos=positions[mi];
-      const p=pctToVB(pos.x,pos.y);
-      h+=`<circle class="hit" cx="${p.x}" cy="${p.y}" r="1.3"
-        fill="${P[pl].bg}" stroke="#c9a84c" stroke-width="0.2" opacity="0.9"
-        data-supply="${pl}-${mi}"/>`;
+      h+=`<div class="chip chip-supply ${bg}" style="left:${pos.x}%;top:${pos.y}%" data-supply="${pl}-${mi}"></div>`;
     }
   }
 
@@ -876,19 +918,16 @@ function renderOverlay() {
   for(const b of S.bonus) {
     if(b.claimed) continue;
     const pr=PROVS[b.pi];
-    const p=pctToVB(pr.x,pr.y);
-    h+=`<circle class="hit" cx="${p.x}" cy="${p.y}" r="1.6" fill="#d4b44c" stroke="#8a7428" stroke-width="0.2" data-bi="${b.pi}"/>`;
-    h+=`<text x="${p.x}" y="${p.y+0.5}" text-anchor="middle" font-size="1.4" pointer-events="none">${BONUS_ICONS[b.type]||'?'}</text>`;
+    h+=`<div class="chip chip-bonus" style="left:${pr.x}%;top:${pr.y}%" data-bi="${b.pi}">${BONUS_ICONS[b.type]||'?'}</div>`;
   }
 
-  svg.innerHTML=h;
+  ov.innerHTML=h;
 
-  // Attach gesture listeners to SVG elements
-  svg.querySelectorAll('[data-s]').forEach(el=>{
+  // Attach gesture listeners
+  ov.querySelectorAll('[data-s]').forEach(el=>{
     const sid=+el.dataset.s;
     const occupied=S.board.some(b=>b.slotId===sid);
     if(occupied) {
-      // Occupied slot: tap=pickup, doubletap=flip, press=rotate zoom
       const mc=new Hammer.Manager(el);
       mc.add(new Hammer.Tap({event:'doubletap', taps:2, interval:350}));
       mc.add(new Hammer.Tap({event:'singletap'}));
@@ -899,18 +938,17 @@ function renderOverlay() {
       mc.on('doubletap',e=>{e.srcEvent.stopPropagation();flipOnBoard(sid);});
       mc.on('press',e=>{e.srcEvent.stopPropagation();pressOnBoard(sid);});
     } else {
-      // Empty slot: immediate tap to place (no doubletap needed)
       el.addEventListener('click',e=>{e.stopPropagation();placeOnSlot(sid);});
     }
   });
-  svg.querySelectorAll('[data-bi]').forEach(el=>{
+  ov.querySelectorAll('[data-bi]').forEach(el=>{
     el.addEventListener('click',e=>{
       e.stopPropagation();
       const bt=S.bonus.find(b=>b.pi===+el.dataset.bi);
       if(bt&&!bt.claimed){bt.claimed=true;autosave();render();}
     });
   });
-  svg.querySelectorAll('[data-supply]').forEach(el=>{
+  ov.querySelectorAll('[data-supply]').forEach(el=>{
     el.addEventListener('click',e=>{
       e.stopPropagation();
       const [pl]=el.dataset.supply.split('-').map(Number);
@@ -970,10 +1008,10 @@ document.addEventListener('keydown',e=>{
   if(e.key==='Escape'){S.sel=null;S.selMarker=false;render();}
 });
 
-window.addEventListener('resize',()=>render());
+window.addEventListener('resize',()=>{updateChipSize();render();});
 
 const img=document.getElementById('board-img');
-function onImgReady() { setupSvgViewBox(); init(); }
+function onImgReady() { init(); }
 if(img.complete) onImgReady(); else img.onload=onImgReady;
 img.onerror=()=>{
   document.getElementById('board-wrap').innerHTML=

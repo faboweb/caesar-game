@@ -1,8 +1,8 @@
 import { test } from '@playwright/test';
 
-test('visual debug - mobile screenshot', async ({ browser }) => {
+test('visual debug - mobile screenshot with debug labels', async ({ browser }) => {
   const context = await browser.newContext({
-    viewport: { width: 375, height: 667 }, // iPhone SE
+    viewport: { width: 375, height: 667 },
     deviceScaleFactor: 2,
   });
   const page = await context.newPage();
@@ -14,32 +14,14 @@ test('visual debug - mobile screenshot', async ({ browser }) => {
     const img = document.getElementById('board-img');
     return img && img.complete && img.naturalWidth > 0;
   });
+  await page.waitForTimeout(300);
+
+  // Draw and select a token to show slot highlights
+  await page.click('#b-draw');
+  await page.waitForTimeout(100);
+  await page.locator('.hand-token').first().click();
   await page.waitForTimeout(500);
 
-  // Draw a token and select it to show slot highlights
-  await page.click('#b-draw');
-  await page.locator('.hand-token').first().click();
-  await page.waitForTimeout(200);
-
-  await page.screenshot({ path: 'debug-mobile.png', fullPage: true });
-
-  // Also log the img rect vs SVG rect
-  const rects = await page.evaluate(() => {
-    const img = document.getElementById('board-img');
-    const svg = document.getElementById('board-overlay');
-    const wrap = document.getElementById('board-wrap');
-    const container = document.getElementById('board-container');
-    return {
-      img: img.getBoundingClientRect(),
-      svg: svg.getBoundingClientRect(),
-      wrap: wrap.getBoundingClientRect(),
-      container: container.getBoundingClientRect(),
-      imgNatural: { w: img.naturalWidth, h: img.naturalHeight },
-      imgDisplay: { w: img.offsetWidth, h: img.offsetHeight },
-      svgViewBox: svg.getAttribute('viewBox'),
-      wrapStyle: { w: wrap.offsetWidth, h: wrap.offsetHeight },
-    };
-  });
-  console.log('RECTS:', JSON.stringify(rects, null, 2));
+  await page.screenshot({ path: 'debug-slots.png', fullPage: true });
   await context.close();
 });

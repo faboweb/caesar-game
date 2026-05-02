@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Caesar - Calibrate Slots</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; background: #111; }
+  body { font-family: monospace; color: #fff; user-select: none; -webkit-user-select: none; }
+  #app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
+  #info { padding: 6px 10px; background: #222; font-size: 13px; flex-shrink: 0; min-height: 50px; }
+  #info b { color: #ffd700; }
+  #board-container {
+    flex: 1; position: relative; overflow: hidden;
+    display: flex; align-items: center; justify-content: center; background: #000;
+  }
+  #board-wrap { position: relative; display: inline-block; height: 100%; }
+  #board-img { display: block; height: 100%; width: auto; max-width: 100%; }
+  #dots {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    pointer-events: none;
+  }
+  .dot {
+    position: absolute; width: 12px; height: 12px; border-radius: 50%;
+    background: rgba(255,0,0,0.8); border: 2px solid #ff0;
+    transform: translate(-50%,-50%); pointer-events: none;
+  }
+  .dot span {
+    position: absolute; top: -14px; left: 50%; transform: translateX(-50%);
+    font-size: 9px; color: #ff0; white-space: nowrap;
+  }
+  #output { padding: 8px; background: #222; font-size: 10px; max-height: 150px;
+    overflow-y: auto; flex-shrink: 0; white-space: pre; }
+  #btns { display: flex; gap: 6px; padding: 6px; background: #222; flex-shrink: 0; }
+  .btn { flex: 1; padding: 10px; background: #333; color: #fff; border: 1px solid #666;
+    border-radius: 4px; font-size: 13px; cursor: pointer; text-align: center; }
+  .btn:active { background: #ffd700; color: #000; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="info">
+    Tap each slot circle on the board in order.<br>
+    <b>Slot <span id="cur">0</span>/34</b> — <span id="desc">Hisp.Ult ↔ Hisp.Cit #1</span>
+  </div>
+  <div id="board-container">
+    <div id="board-wrap">
+      <img id="board-img" src="caesar-board.jpg" alt="Board">
+      <div id="dots"></div>
+    </div>
+  </div>
+  <div id="btns">
+    <div class="btn" id="undo">Undo</div>
+    <div class="btn" id="skip">Skip</div>
+    <div class="btn" id="copy">Copy JSON</div>
+  </div>
+  <div id="output"></div>
+</div>
+<script>
+const DESCS = [
+  'Hisp.Ult ↔ Hisp.Cit #1','Hisp.Ult ↔ Hisp.Cit #2','Hisp.Ult ↔ Hisp.Cit #3',
+  'Hisp.Ult ↔ Mauritania #1','Hisp.Ult ↔ Mauritania #2',
+  'Hisp.Cit ↔ Sardinia','Hisp.Cit ↔ Gallia',
+  'Mauritania ↔ Sardinia',
+  'Mauritania ↔ Numidia #1','Mauritania ↔ Numidia #2',
+  'Gallia ↔ G.Cisalpina #1','Gallia ↔ G.Cisalpina #2',
+  'Sardinia ↔ G.Cisalpina',
+  'Sardinia ↔ Sicilia',
+  'Numidia ↔ Sicilia',
+  'Numidia ↔ Africa #1','Numidia ↔ Africa #2',
+  'Sicilia ↔ Italia #1','Sicilia ↔ Italia #2',
+  'G.Cisalpina ↔ Italia',
+  'G.Cisalpina ↔ Dalmatia',
+  'Italia ↔ Dalmatia',
+  'Italia ↔ Achaia',
+  'Dalmatia ↔ Macedonia',
+  'Africa ↔ Sicilia',
+  'Africa ↔ Cyrene',
+  'Achaia ↔ Macedonia',
+  'Achaia ↔ Cyrene',
+  'Achaia ↔ Creta',
+  'Creta ↔ Aegyptus',
+  'Creta ↔ Asia',
+  'Cyrene ↔ Aegyptus',
+  'Asia ↔ Macedonia',
+  'Aegyptus ↔ Syria',
+  'Asia ↔ Syria',
+];
+
+const points = [];
+let cur = 0;
+
+function updateUI() {
+  document.getElementById('cur').textContent = cur;
+  document.getElementById('desc').textContent = cur < DESCS.length ? DESCS[cur] : 'DONE!';
+  // Render dots
+  const dotsEl = document.getElementById('dots');
+  dotsEl.innerHTML = '';
+  points.forEach((p, i) => {
+    if (!p) return;
+    const d = document.createElement('div');
+    d.className = 'dot';
+    d.style.left = p.x + '%';
+    d.style.top = p.y + '%';
+    d.innerHTML = `<span>${i}</span>`;
+    dotsEl.appendChild(d);
+  });
+  // Output
+  let out = '';
+  points.forEach((p, i) => {
+    if (!p) { out += `  { id:${i}, x:0, y:0 }, // SKIPPED\n`; return; }
+    out += `  { id:${i}, x:${p.x.toFixed(1)}, y:${p.y.toFixed(1)} },\n`;
+  });
+  document.getElementById('output').textContent = out;
+}
+
+document.getElementById('board-container').addEventListener('click', (e) => {
+  if (cur >= DESCS.length) return;
+  const img = document.getElementById('board-img');
+  const r = img.getBoundingClientRect();
+  const x = ((e.clientX - r.left) / r.width) * 100;
+  const y = ((e.clientY - r.top) / r.height) * 100;
+  points[cur] = { x, y };
+  cur++;
+  updateUI();
+});
+
+document.getElementById('undo').addEventListener('click', () => {
+  if (cur > 0) { cur--; points.length = cur; updateUI(); }
+});
+
+document.getElementById('skip').addEventListener('click', () => {
+  if (cur < DESCS.length) { points[cur] = null; cur++; updateUI(); }
+});
+
+document.getElementById('copy').addEventListener('click', () => {
+  const text = document.getElementById('output').textContent;
+  navigator.clipboard.writeText(text).then(() => alert('Copied!'));
+});
+
+updateUI();
+</script>
+</body>
+</html>

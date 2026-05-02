@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Caesar - Calibrate</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; background: #111; }
+  body { font-family: monospace; color: #fff; user-select: none; -webkit-user-select: none; touch-action: none; }
+  #app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
+
+  #controls {
+    display: flex; gap: 4px; padding: 4px 6px; background: #222; flex-shrink: 0;
+    align-items: center; flex-wrap: wrap; font-size: 10px;
+  }
+  .ctrl-btn {
+    padding: 5px 8px; background: #333; color: #fff; border: 1px solid #666;
+    border-radius: 4px; font-size: 10px; cursor: pointer; white-space: nowrap;
+  }
+  .ctrl-btn:active { background: #ffd700; color: #000; }
+  input[type=range] { width: 70px; }
+  label { color: #aaa; font-size: 10px; }
+
+  #board-container {
+    flex: 1; position: relative; overflow: hidden;
+    display: flex; align-items: center; justify-content: center; background: #000;
+  }
+  #board-wrap { position: relative; display: inline-block; height: 100%; }
+  #board-img { display: block; height: 100%; width: auto; max-width: 100%; }
+  #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+
+  /* Delete indicator (border glow when dragging off-board) */
+  #delete-indicator {
+    position: absolute; inset: 0;
+    pointer-events: none; display: none;
+    border: 3px solid transparent;
+    z-index: 5;
+    transition: border-color 0.15s;
+  }
+  #delete-indicator.active { display: block; border-color: transparent; }
+  #delete-indicator.danger { border-color: #f55; box-shadow: inset 0 0 20px rgba(255,50,50,0.3); }
+
+  .dot {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    pointer-events: all;
+    touch-action: none;
+    cursor: grab;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 7px;
+    font-weight: bold;
+    color: #000;
+  }
+  .dot.selected { border-color: #ff0 !important; box-shadow: 0 0 8px #ff0; z-index: 10; }
+  .dot.dragging-dot { opacity: 0.4; }
+  .dot-slot { background: rgba(255, 80, 80, 0.55); border: 1.5px solid #ff0; }
+
+  /* Magnifier */
+  #magnifier {
+    position: fixed;
+    width: 140px; height: 140px;
+    border-radius: 50%;
+    border: 3px solid #c9a84c;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.7);
+    overflow: hidden;
+    pointer-events: none;
+    z-index: 200;
+    background-repeat: no-repeat;
+    display: none;
+  }
+  #magnifier.show { display: block; }
+  #mag-crosshair {
+    position: absolute; top: 50%; left: 50%;
+    width: 14px; height: 14px;
+    transform: translate(-50%, -50%);
+    border: 1.5px solid rgba(255,215,0,0.7);
+    border-radius: 50%;
+  }
+  #mag-dot {
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    background: rgba(255, 80, 80, 0.7);
+    border: 1.5px solid #ff0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 8px; font-weight: bold; color: #000;
+  }
+
+  #output {
+    padding: 4px 6px; background: #1a1a1a; font-size: 8px; max-height: 100px;
+    overflow-y: auto; flex-shrink: 0; white-space: pre; border-top: 1px solid #333;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="controls">
+    <label>Size: <span id="size-val">4.8</span>%</label>
+    <input type="range" id="size-slider" min="2" max="8" step="0.1" value="4.8">
+    <button class="ctrl-btn" id="btn-add">+ Add</button>
+    <button class="ctrl-btn" id="btn-toggle">Hide</button>
+    <button class="ctrl-btn" id="btn-copy">Copy</button>
+    <button class="ctrl-btn" id="btn-reset">Reset</button>
+  </div>
+
+  <div id="board-container">
+    <div id="board-wrap">
+      <img id="board-img" src="/caesar-board.jpg" alt="Board">
+      <div id="overlay"></div>
+      <div id="delete-indicator"></div>
+    </div>
+  </div>
+
+  <div id="magnifier">
+    <div id="mag-crosshair"></div>
+    <div id="mag-dot"></div>
+  </div>
+
+  <div id="output"></div>
+</div>
+
+<script>
+const INITIAL_SLOTS = [
+  { id:0,  x:36.6, y:5.1 },{ id:1,  x:41.4, y:5.1 },{ id:2,  x:46.1, y:5.1 },
+  { id:3,  x:20.1, y:10.0},{ id:4,  x:20.1, y:13.7},
+  { id:5,  x:46.1, y:11.8},{ id:6,  x:68.6, y:7.3 },
+  { id:7,  x:36.6, y:17.3},
+  { id:8,  x:21.3, y:21.9},{ id:9,  x:26.0, y:21.9},
+  { id:10, x:86.3, y:11.8},{ id:11, x:86.3, y:15.5},
+  { id:12, x:63.8, y:15.5},
+  { id:13, x:46.1, y:24.6},
+  { id:14, x:36.6, y:30.1},
+  { id:15, x:13.0, y:34.6},{ id:16, x:17.7, y:34.6},
+  { id:17, x:54.4, y:31.9},{ id:18, x:59.6, y:31.9},
+  { id:19, x:73.3, y:25.5},
+  { id:20, x:88.7, y:28.2},
+  { id:21, x:80.4, y:34.6},
+  { id:22, x:61.5, y:39.2},
+  { id:23, x:91.0, y:41.0},
+  { id:24, x:28.4, y:38.3},
+  { id:25, x:11.8, y:47.4},
+  { id:26, x:73.3, y:48.3},
+  { id:27, x:30.7, y:51.0},
+  { id:28, x:50.8, y:55.6},
+  { id:29, x:37.8, y:64.7},
+  { id:30, x:63.8, y:61.9},
+  { id:31, x:14.2, y:62.8},
+  { id:32, x:80.4, y:56.5},
+  { id:33, x:34.3, y:80.1},
+  { id:34, x:73.3, y:76.5},
+];
+
+let slots = JSON.parse(localStorage.getItem('caesar_calibration') || 'null') || JSON.parse(JSON.stringify(INITIAL_SLOTS));
+let chipPct = parseFloat(localStorage.getItem('caesar_chip_pct') || '4.8');
+let visible = true;
+let dragging = null;
+let selected = null;
+let nextId = Math.max(...slots.map(s => s.id)) + 1;
+
+const slider = document.getElementById('size-slider');
+const sizeVal = document.getElementById('size-val');
+const magnifier = document.getElementById('magnifier');
+const magDot = document.getElementById('mag-dot');
+const deleteInd = document.getElementById('delete-indicator');
+slider.value = chipPct;
+sizeVal.textContent = chipPct;
+
+function save() {
+  localStorage.setItem('caesar_calibration', JSON.stringify(slots));
+  localStorage.setItem('caesar_chip_pct', chipPct.toString());
+}
+
+function getImgRect() {
+  return document.getElementById('board-img').getBoundingClientRect();
+}
+
+function getChipPx() {
+  return document.getElementById('board-img').offsetHeight * (chipPct / 100);
+}
+
+function renderDots() {
+  const ov = document.getElementById('overlay');
+  const img = document.getElementById('board-img');
+  if (!img.complete) return;
+  const cs = getChipPx();
+
+  let html = '';
+  if (visible) {
+    for (const s of slots) {
+      const selCls = selected === s.id ? ' selected' : '';
+      const dragCls = dragging && dragging.id === s.id ? ' dragging-dot' : '';
+      html += `<div class="dot dot-slot${selCls}${dragCls}" data-id="${s.id}"
+        style="left:${s.x}%;top:${s.y}%;width:${cs}px;height:${cs}px">${s.id}</div>`;
+    }
+  }
+  ov.innerHTML = html;
+
+  ov.querySelectorAll('.dot').forEach(el => {
+    el.addEventListener('pointerdown', onPointerDown);
+  });
+
+  updateOutput();
+}
+
+function updateMagnifier(clientX, clientY, slotId) {
+  const img = document.getElementById('board-img');
+  const rect = img.getBoundingClientRect();
+
+  const zoom = 2.8;
+  const loupeSize = 140;
+
+  const bgW = rect.width * zoom;
+  const bgH = rect.height * zoom;
+  const relX = (clientX - rect.left) / rect.width;
+  const relY = (clientY - rect.top) / rect.height;
+  const bgX = -(relX * bgW - loupeSize / 2);
+  const bgY = -(relY * bgH - loupeSize / 2);
+
+  const loupeX = clientX - loupeSize / 2;
+  const loupeY = clientY - loupeSize - 40;
+
+  const cs = getChipPx() * zoom * 0.5;
+
+  magnifier.style.left = loupeX + 'px';
+  magnifier.style.top = Math.max(5, loupeY) + 'px';
+  magnifier.style.backgroundImage = `url(${img.src})`;
+  magnifier.style.backgroundSize = `${bgW}px ${bgH}px`;
+  magnifier.style.backgroundPosition = `${bgX}px ${bgY}px`;
+  magnifier.classList.add('show');
+
+  magDot.style.width = cs + 'px';
+  magDot.style.height = cs + 'px';
+  magDot.textContent = slotId;
+}
+
+function hideMagnifier() {
+  magnifier.classList.remove('show');
+}
+
+function onPointerDown(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  const id = parseInt(e.target.closest('.dot').dataset.id);
+  selected = id;
+  const r = getImgRect();
+  const s = slots.find(s => s.id === id);
+  dragging = {
+    id,
+    startX: e.clientX,
+    startY: e.clientY,
+    origX: s.x,
+    origY: s.y,
+    imgW: r.width,
+    imgH: r.height,
+  };
+  deleteInd.classList.add('active');
+  updateMagnifier(e.clientX, e.clientY, id);
+  document.addEventListener('pointermove', onPointerMove);
+  document.addEventListener('pointerup', onPointerUp);
+  renderDots();
+}
+
+function onPointerMove(e) {
+  if (!dragging) return;
+  e.preventDefault();
+  const dx = e.clientX - dragging.startX;
+  const dy = e.clientY - dragging.startY;
+  const s = slots.find(s => s.id === dragging.id);
+  if (!s) return;
+  s.x = Math.max(-5, Math.min(105, dragging.origX + (dx / dragging.imgW) * 100));
+  s.y = Math.max(-5, Math.min(105, dragging.origY + (dy / dragging.imgH) * 100));
+
+  const el = document.querySelector(`[data-id="${dragging.id}"]`);
+  if (el) {
+    el.style.left = s.x + '%';
+    el.style.top = s.y + '%';
+  }
+
+  updateMagnifier(e.clientX, e.clientY, dragging.id);
+
+  // Check if off-board (outside image bounds)
+  const imgRect = getImgRect();
+  const offBoard = e.clientX < imgRect.left || e.clientX > imgRect.right
+    || e.clientY < imgRect.top || e.clientY > imgRect.bottom;
+  deleteInd.classList.toggle('danger', offBoard);
+}
+
+function onPointerUp(e) {
+  if (dragging) {
+    const s = slots.find(s => s.id === dragging.id);
+    if (s) {
+      // Check if dropped off-board — delete it
+      const imgRect = getImgRect();
+      const offBoard = e.clientX < imgRect.left || e.clientX > imgRect.right
+        || e.clientY < imgRect.top || e.clientY > imgRect.bottom;
+      if (offBoard) {
+        slots = slots.filter(sl => sl.id !== dragging.id);
+      } else {
+        s.x = Math.round(Math.max(0, Math.min(100, s.x)) * 10) / 10;
+        s.y = Math.round(Math.max(0, Math.min(100, s.y)) * 10) / 10;
+      }
+    }
+    save();
+  }
+  dragging = null;
+  deleteInd.classList.remove('active');
+  deleteInd.classList.remove('danger');
+  hideMagnifier();
+  document.removeEventListener('pointermove', onPointerMove);
+  document.removeEventListener('pointerup', onPointerUp);
+  renderDots();
+}
+
+function updateOutput() {
+  let out = 'const SLOTS = [\n';
+  for (const s of slots) {
+    out += `  { id:${s.id}, x:${s.x.toFixed(1)}, y:${s.y.toFixed(1)} },\n`;
+  }
+  out += '];\nchipPct: ' + chipPct.toFixed(1);
+  document.getElementById('output').textContent = out;
+}
+
+// ── Add slot: tap empty area on board ──
+document.getElementById('btn-add').addEventListener('click', () => {
+  // Add mode: next board tap creates a new slot
+  const handler = (e) => {
+    const r = getImgRect();
+    const x = ((e.clientX - r.left) / r.width) * 100;
+    const y = ((e.clientY - r.top) / r.height) * 100;
+    if (x < 0 || x > 100 || y < 0 || y > 100) return;
+    slots.push({ id: nextId++, x: Math.round(x*10)/10, y: Math.round(y*10)/10 });
+    save();
+    renderDots();
+    document.getElementById('board-container').removeEventListener('pointerup', handler);
+    document.getElementById('btn-add').style.background = '';
+  };
+  document.getElementById('board-container').addEventListener('pointerup', handler, { once: true });
+  document.getElementById('btn-add').style.background = '#c9a84c';
+});
+
+slider.addEventListener('input', () => {
+  chipPct = parseFloat(slider.value);
+  sizeVal.textContent = chipPct.toFixed(1);
+  save();
+  renderDots();
+});
+
+document.getElementById('btn-toggle').addEventListener('click', () => {
+  visible = !visible;
+  document.getElementById('btn-toggle').textContent = visible ? 'Hide' : 'Show';
+  renderDots();
+});
+
+document.getElementById('btn-copy').addEventListener('click', () => {
+  const text = document.getElementById('output').textContent;
+  navigator.clipboard.writeText(text).then(() => alert('Copied!'));
+});
+
+document.getElementById('btn-reset').addEventListener('click', () => {
+  if (!confirm('Reset all positions to defaults?')) return;
+  slots = JSON.parse(JSON.stringify(INITIAL_SLOTS));
+  nextId = Math.max(...slots.map(s => s.id)) + 1;
+  chipPct = 4.8;
+  slider.value = chipPct;
+  sizeVal.textContent = chipPct;
+  save();
+  renderDots();
+});
+
+const img = document.getElementById('board-img');
+if (img.complete) renderDots();
+else img.onload = renderDots;
+window.addEventListener('resize', renderDots);
+</script>
+</body>
+</html>

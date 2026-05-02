@@ -847,7 +847,7 @@ function updateChipSize() {
   const img=document.getElementById('board-img');
   if(!img) return;
   // Chip size = ~4.2% of image height in pixels — always a circle
-  const cs=img.offsetHeight*0.042;
+  const cs=img.offsetHeight*0.055;
   document.getElementById('board-overlay').style.setProperty('--cs', cs+'px');
 }
 

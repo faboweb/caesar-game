@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Caesar!</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/hammer.js/2.0.8/hammer.min.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { height: 100%; overflow: hidden; }
@@ -687,24 +688,20 @@ function rotate() {
   if(t) openRotateZoom(t, {where:'hand', idx:S.sel}, null);
 }
 
-// Double-tap tracking for hand tokens
-let lastHandTap={idx:-1, time:0};
-
 function selHand(i) {
-  const now=Date.now();
-  // Double-tap on SELECTED token: flip orientation instead of deselecting
-  if(S.sel===i && !S.selMarker && lastHandTap.idx===i && now-lastHandTap.time<350) {
-    const t=S.hands[S.cp][i];
-    if(t) { t.rot=!t.rot; autosave(); }
-    lastHandTap={idx:-1,time:0};
-    // Keep selected
-    render();
-    return;
-  }
-  lastHandTap={idx:i, time:now};
   S.selMarker=false;
   S.sel=(S.sel===i)?null:i;
   render();
+}
+
+function flipHand(i) {
+  const t=S.hands[S.cp][i];
+  if(t) { t.rot=!t.rot; autosave(); render(); }
+}
+
+function pressHand(i) {
+  const t=S.hands[S.cp][i];
+  if(t) openRotateZoom(t, {where:'hand', idx:i}, null);
 }
 
 function selMark() {
@@ -713,46 +710,35 @@ function selMark() {
   render();
 }
 
-// Double-tap tracking for board tokens
-// Single tap: picks up. Double-tap: if just picked up, put back and flip.
-let lastPickup={sid:-1, time:0};
-
 function placeOnSlot(sid) {
-  const now=Date.now();
   const ex=S.board.findIndex(b=>b.slotId===sid);
-
+  // Pick up existing
   if(ex!==-1) {
     const b=S.board[ex];
     if(b.pl!==S.cp) return;
-
-    // Double-tap detection: if we just picked up from this slot, undo pickup and flip
-    if(lastPickup.sid===sid && now-lastPickup.time<350) {
-      // Token was picked up into hand — find it and put it back flipped
-      const hi=S.hands[S.cp].length-1;
-      if(hi>=0) {
-        const t=S.hands[S.cp][hi];
-        S.board.push({tok:{type:t.type,v:[...t.v]}, slotId:sid, rot:!t.rot, pl:S.cp});
-        S.hands[S.cp].splice(hi,1);
-        S.sel=null; autosave(); render();
-      }
-      lastPickup={sid:-1,time:0};
-      return;
-    }
-
-    // Single tap: pick up
-    lastPickup={sid:sid, time:now};
     S.hands[S.cp].push({type:b.tok.type, v:[...b.tok.v], rot:b.rot});
     S.board.splice(ex,1);
     S.sel=null; autosave(); render();
     return;
   }
-  lastPickup={sid:-1, time:0};
   // Place selected
   if(S.sel===null||S.selMarker) return;
   const t=S.hands[S.cp][S.sel];
   S.board.push({tok:{type:t.type,v:[...t.v]}, slotId:sid, rot:t.rot, pl:S.cp});
   S.hands[S.cp].splice(S.sel,1);
   S.sel=null; autosave(); render();
+}
+
+function flipOnBoard(sid) {
+  const b=S.board.find(b=>b.slotId===sid);
+  if(b && b.pl===S.cp) { b.rot=!b.rot; autosave(); render(); }
+}
+
+function pressOnBoard(sid) {
+  const b=S.board.find(b=>b.slotId===sid);
+  if(!b || b.pl!==S.cp) return;
+  const sl=SLOTS.find(s=>s.id===sid);
+  openRotateZoom(b.tok||b, {where:'board', slotId:sid}, sl);
 }
 
 function boardClick(e) {
@@ -805,43 +791,7 @@ function endTurn() {
 
 function reset() { if(confirm('Reset game?')) init(); }
 
-// ── Long press for rotate on board ──────────────────────────
-let lpt=null, lpid=null;
-
-function touchStart(e) {
-  if(e.touches.length!==1) return;
-  const t=e.touches[0];
-  const pct=clickToPct(t.clientX, t.clientY);
-  if(!pct) return;
-
-  for(const b of S.board) {
-    if(b.pl!==S.cp) continue;
-    const sl=SLOTS.find(s=>s.id===b.slotId);
-    if(!sl) continue;
-    if(Math.hypot(pct.x-sl.x, pct.y-sl.y)<3) {
-      lpid=b.slotId;
-      lpt=setTimeout(()=>{
-        const sl=SLOTS.find(s=>s.id===b.slotId);
-        openRotateZoom(b.tok||b, {where:'board', slotId:b.slotId}, sl);
-        lpt=null; lpid=null;
-      },400);
-      return;
-    }
-  }
-}
-function touchEnd() { if(lpt){clearTimeout(lpt);lpt=null;} lpid=null; }
-function touchMove() { if(lpt){clearTimeout(lpt);lpt=null;} }
-
-// Long press on hand token to rotate
-let hlt=null;
-function hts(i) {
-  hlt=setTimeout(()=>{
-    const t=S.hands[S.cp][i];
-    if(t) openRotateZoom(t, {where:'hand', idx:i}, null);
-    hlt=null;
-  },400);
-}
-function hte() { if(hlt){clearTimeout(hlt);hlt=null;} }
+// Touch gestures are handled via Hammer.js — see event wiring section
 
 // ── Render ──────────────────────────────────────────────────
 function render() {
@@ -933,10 +883,25 @@ function renderOverlay() {
 
   svg.innerHTML=h;
 
-  // Attach listeners
+  // Attach gesture listeners to SVG elements
   svg.querySelectorAll('[data-s]').forEach(el=>{
     const sid=+el.dataset.s;
-    el.addEventListener('click',e=>{e.stopPropagation();placeOnSlot(sid);});
+    const occupied=S.board.some(b=>b.slotId===sid);
+    if(occupied) {
+      // Occupied slot: tap=pickup, doubletap=flip, press=rotate zoom
+      const mc=new Hammer.Manager(el);
+      mc.add(new Hammer.Tap({event:'doubletap', taps:2, interval:350}));
+      mc.add(new Hammer.Tap({event:'singletap'}));
+      mc.add(new Hammer.Press({event:'press', time:400}));
+      mc.get('doubletap').recognizeWith('singletap');
+      mc.get('singletap').requireFailure('doubletap');
+      mc.on('singletap',e=>{e.srcEvent.stopPropagation();placeOnSlot(sid);});
+      mc.on('doubletap',e=>{e.srcEvent.stopPropagation();flipOnBoard(sid);});
+      mc.on('press',e=>{e.srcEvent.stopPropagation();pressOnBoard(sid);});
+    } else {
+      // Empty slot: immediate tap to place (no doubletap needed)
+      el.addEventListener('click',e=>{e.stopPropagation();placeOnSlot(sid);});
+    }
   });
   svg.querySelectorAll('[data-bi]').forEach(el=>{
     el.addEventListener('click',e=>{
@@ -945,12 +910,11 @@ function renderOverlay() {
       if(bt&&!bt.claimed){bt.claimed=true;autosave();render();}
     });
   });
-  // Supply marker tap — pick up for placement
   svg.querySelectorAll('[data-supply]').forEach(el=>{
     el.addEventListener('click',e=>{
       e.stopPropagation();
       const [pl]=el.dataset.supply.split('-').map(Number);
-      if(pl!==S.cp) return; // can only pick up your own
+      if(pl!==S.cp) return;
       S.selMarker=true; S.sel=-1;
       render();
     });
@@ -977,10 +941,15 @@ function renderHand() {
 
   ct.querySelectorAll('[data-h]').forEach(el=>{
     const i=+el.dataset.h;
-    el.addEventListener('click',()=>selHand(i));
-    el.addEventListener('touchstart',()=>hts(i),{passive:true});
-    el.addEventListener('touchend',hte);
-    el.addEventListener('touchmove',hte,{passive:true});
+    const mc=new Hammer.Manager(el);
+    mc.add(new Hammer.Tap({event:'doubletap', taps:2, interval:350}));
+    mc.add(new Hammer.Tap({event:'singletap'}));
+    mc.add(new Hammer.Press({event:'press', time:400}));
+    mc.get('doubletap').recognizeWith('singletap');
+    mc.get('singletap').requireFailure('doubletap');
+    mc.on('singletap',()=>selHand(i));
+    mc.on('doubletap',()=>flipHand(i));
+    mc.on('press',()=>pressHand(i));
   });
 }
 
@@ -991,10 +960,10 @@ document.getElementById('b-mark').onclick=selMark;
 document.getElementById('b-end').onclick=endTurn;
 
 const bc=document.getElementById('board-container');
-bc.addEventListener('click',boardClick);
-bc.addEventListener('touchstart',touchStart,{passive:true});
-bc.addEventListener('touchend',touchEnd);
-bc.addEventListener('touchmove',touchMove,{passive:true});
+// Board container: single tap for slot/marker/bonus clicks
+// Hammer for the container itself (fallback for areas not covered by SVG elements)
+const bcHammer=new Hammer(bc, {domEvents:true});
+bcHammer.on('tap', e => boardClick(e.srcEvent));
 
 document.addEventListener('keydown',e=>{
   if(e.key==='r'||e.key==='R') rotate();

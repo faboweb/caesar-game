@@ -62,6 +62,7 @@ test.describe('Caesar! Virtual Tabletop', () => {
     await page.click('#b-draw');
     const token = page.locator('.hand-token').first();
     await token.click();
+    await page.waitForTimeout(500);
     await expect(token).toHaveClass(/selected/);
   });
 
@@ -69,11 +70,12 @@ test.describe('Caesar! Virtual Tabletop', () => {
     await page.click('#b-draw');
     const token = page.locator('.hand-token').first();
     await token.click();
+    // Hammer singletap fires after doubletap window (~300ms)
+    await page.waitForTimeout(500);
     await expect(token).toHaveClass(/selected/);
-    // Wait past double-tap window (350ms) before clicking again to deselect
-    await page.waitForTimeout(400);
     await token.click();
-    await expect(token).not.toHaveClass(/selected/);
+    await page.waitForTimeout(500);
+    await expect(page.locator('.hand-token.selected')).toHaveCount(0);
   });
 
   test('rotate button opens zoom overlay and flips values', async ({ page }) => {
@@ -133,6 +135,7 @@ test.describe('Caesar! Virtual Tabletop', () => {
     await page.click('#b-draw');
     const token = page.locator('.hand-token').first();
     await token.click();
+    await page.waitForTimeout(500);
 
     // Should see pulsing slot targets
     const slots = page.locator('.slot-avail');
@@ -144,12 +147,13 @@ test.describe('Caesar! Virtual Tabletop', () => {
     await page.click('#b-draw');
     const token = page.locator('.hand-token').first();
     await token.click();
+    await page.waitForTimeout(500);
     const slotsVisible = await page.locator('.slot-avail').count();
     expect(slotsVisible).toBeGreaterThan(0);
 
-    // Wait past double-tap window then deselect
-    await page.waitForTimeout(400);
+    // Deselect
     await token.click();
+    await page.waitForTimeout(500);
     const slotsHidden = await page.locator('.slot-avail').count();
     expect(slotsHidden).toBe(0);
   });
@@ -161,19 +165,17 @@ test.describe('Caesar! Virtual Tabletop', () => {
 
     // Select the token
     await page.locator('.hand-token').first().click();
+    await page.waitForTimeout(500);
 
-    // Click a slot target
+    // Click a slot target — Hammer singletap has delay
     const slot = page.locator('.slot-avail').first();
     await slot.click();
+    await page.waitForTimeout(600);
 
-    // Token removed from hand
-    const handCountAfter = await page.locator('.hand-token').count();
-    expect(handCountAfter).toBe(0);
-
-    // Token appears on board (placed-token group with data-s)
+    // Token removed from hand, appears on board
+    await expect(page.locator('.hand-token')).toHaveCount(0);
     const placed = page.locator('g.hit[data-s]');
-    const placedCount = await placed.count();
-    expect(placedCount).toBeGreaterThan(0);
+    expect(await placed.count()).toBeGreaterThan(0);
   });
 
   test('pick up placed token back to hand', async ({ page }) => {
@@ -293,6 +295,7 @@ test.describe('Caesar! Virtual Tabletop', () => {
   test('keyboard R opens rotate zoom for selected token', async ({ page }) => {
     await page.click('#b-draw');
     await page.locator('.hand-token').first().click();
+    await page.waitForTimeout(500); // wait for Hammer singletap
     await page.keyboard.press('r');
     await expect(page.locator('#rot-zoom')).toHaveClass(/show/);
     // Big token should be visible with values

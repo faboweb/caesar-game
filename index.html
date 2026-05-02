@@ -239,7 +239,7 @@
   <div id="board-container">
     <div id="board-wrap">
       <img id="board-img" src="caesar-board.jpg" alt="Board">
-      <svg id="board-overlay" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
+      <svg id="board-overlay"></svg>
     </div>
   </div>
 
@@ -497,6 +497,22 @@ const PROVS = [
 const ICONS = { Sword:'\u2694\uFE0F', Shield:'\uD83D\uDEE1\uFE0F', Ship:'\u2693', Wild:'\u2618\uFE0F' };
 const BONUS_ICONS = { Tactics:'\u26A1', Wealth:'\uD83D\uDCB0', Might:'\uD83D\uDCAA', Senate:'\uD83C\uDFDB\uFE0F' };
 
+// ── Marker supply positions on the board (x%, y%) ──────────
+// Caesar (player 0): top-left area, 2 rows of 6
+// Pompey (player 1): right edge + bottom-right, 2 columns of 6
+const MARKER_SUPPLY = [
+  // Caesar — top-left, row 1 (6 markers)
+  [
+    {x:13,y:4}, {x:17,y:4}, {x:21,y:4}, {x:13,y:7.5}, {x:17,y:7.5}, {x:21,y:7.5},
+    {x:5,y:10}, {x:9,y:10}, {x:5,y:13.5}, {x:9,y:13.5}, {x:5,y:17}, {x:9,y:17},
+  ],
+  // Pompey — right edge columns
+  [
+    {x:91,y:7}, {x:95,y:7}, {x:91,y:10.5}, {x:95,y:10.5}, {x:91,y:14}, {x:95,y:14},
+    {x:91,y:80}, {x:95,y:80}, {x:91,y:83.5}, {x:95,y:83.5}, {x:91,y:87}, {x:95,y:87},
+  ],
+];
+
 function makeTokens() {
   const t = [];
   for (const type of ['Sword','Shield']) {
@@ -564,8 +580,19 @@ function freshGame() {
 }
 
 // ── Coordinate helpers ──────────────────────────────────────
-// SVG viewBox is 0 0 100 100, slot coords are already in percentage.
-// For click handling we convert pixel clicks to percentage of image.
+// SVG viewBox uses image's natural aspect ratio scaled to 100 height.
+// Slot coords are in (x%, y%) of image dimensions.
+// viewBox = "0 0 <aspectW> 100" where aspectW = naturalWidth/naturalHeight * 100
+
+let VBW = 77; // default, updated on image load
+
+function setupSvgViewBox() {
+  const img = document.getElementById('board-img');
+  if (!img || !img.naturalWidth) return;
+  VBW = (img.naturalWidth / img.naturalHeight) * 100;
+  const svg = document.getElementById('board-overlay');
+  svg.setAttribute('viewBox', `0 0 ${VBW} 100`);
+}
 
 function getImgRect() {
   const img=document.getElementById('board-img');
@@ -577,6 +604,11 @@ function clickToPct(clientX, clientY) {
   const r=getImgRect();
   if(!r) return null;
   return { x:(clientX-r.left)/r.width*100, y:(clientY-r.top)/r.height*100 };
+}
+
+// Convert our percentage-based coords to SVG viewBox coords
+function pctToVB(xPct, yPct) {
+  return { x: xPct / 100 * VBW, y: yPct };
 }
 
 // ── Actions ─────────────────────────────────────────────────
@@ -655,7 +687,21 @@ function rotate() {
   if(t) openRotateZoom(t, {where:'hand', idx:S.sel}, null);
 }
 
+// Double-tap tracking for hand tokens
+let lastHandTap={idx:-1, time:0};
+
 function selHand(i) {
+  const now=Date.now();
+  // Double-tap on SELECTED token: flip orientation instead of deselecting
+  if(S.sel===i && !S.selMarker && lastHandTap.idx===i && now-lastHandTap.time<350) {
+    const t=S.hands[S.cp][i];
+    if(t) { t.rot=!t.rot; autosave(); }
+    lastHandTap={idx:-1,time:0};
+    // Keep selected
+    render();
+    return;
+  }
+  lastHandTap={idx:i, time:now};
   S.selMarker=false;
   S.sel=(S.sel===i)?null:i;
   render();
@@ -667,17 +713,40 @@ function selMark() {
   render();
 }
 
+// Double-tap tracking for board tokens
+// Single tap: picks up. Double-tap: if just picked up, put back and flip.
+let lastPickup={sid:-1, time:0};
+
 function placeOnSlot(sid) {
+  const now=Date.now();
   const ex=S.board.findIndex(b=>b.slotId===sid);
-  // Pick up existing
+
   if(ex!==-1) {
     const b=S.board[ex];
-    if(b.pl!==S.cp) return; // can't pick up opponent's token
+    if(b.pl!==S.cp) return;
+
+    // Double-tap detection: if we just picked up from this slot, undo pickup and flip
+    if(lastPickup.sid===sid && now-lastPickup.time<350) {
+      // Token was picked up into hand — find it and put it back flipped
+      const hi=S.hands[S.cp].length-1;
+      if(hi>=0) {
+        const t=S.hands[S.cp][hi];
+        S.board.push({tok:{type:t.type,v:[...t.v]}, slotId:sid, rot:!t.rot, pl:S.cp});
+        S.hands[S.cp].splice(hi,1);
+        S.sel=null; autosave(); render();
+      }
+      lastPickup={sid:-1,time:0};
+      return;
+    }
+
+    // Single tap: pick up
+    lastPickup={sid:sid, time:now};
     S.hands[S.cp].push({type:b.tok.type, v:[...b.tok.v], rot:b.rot});
     S.board.splice(ex,1);
     S.sel=null; autosave(); render();
     return;
   }
+  lastPickup={sid:-1, time:0};
   // Place selected
   if(S.sel===null||S.selMarker) return;
   const t=S.hands[S.cp][S.sel];
@@ -797,22 +866,22 @@ function renderOverlay() {
   const svg=document.getElementById('board-overlay');
   const hasSel=S.sel!==null&&!S.selMarker;
   let h='';
-  // SVG viewBox is 0 0 100 100, all coords are percentages directly
   const R=1.8; // token radius in viewBox units
 
   // Slot targets
   for(const s of SLOTS) {
+    const p=pctToVB(s.x,s.y);
     const occ=S.board.some(b=>b.slotId===s.id);
     if(!occ && hasSel) {
-      h+=`<circle class="hit slot-avail" cx="${s.x}" cy="${s.y}" r="${R}"
+      h+=`<circle class="hit slot-avail" cx="${p.x}" cy="${p.y}" r="${R}"
         fill="rgba(201,168,76,0.35)" stroke="#c9a84c" stroke-width="0.3"
         data-s="${s.id}"/>`;
     } else if(!occ) {
-      h+=`<circle class="hit" cx="${s.x}" cy="${s.y}" r="${R}"
+      h+=`<circle class="hit" cx="${p.x}" cy="${p.y}" r="${R}"
         fill="transparent" data-s="${s.id}"/>`;
     }
     if(DEBUG) {
-      h+=`<text class="debug-label" x="${s.x+2}" y="${s.y+0.5}" font-size="1.2">${s.id}</text>`;
+      h+=`<text class="debug-label" x="${p.x+2}" y="${p.y+0.5}" font-size="1.2">${s.id}</text>`;
     }
   }
 
@@ -820,31 +889,46 @@ function renderOverlay() {
   for(const b of S.board) {
     const sl=SLOTS.find(s=>s.id===b.slotId);
     if(!sl) continue;
+    const p=pctToVB(sl.x,sl.y);
     const c=P[b.pl];
     const v=b.rot?[b.tok.v[1],b.tok.v[0]]:b.tok.v;
     h+=`<g class="hit" data-s="${b.slotId}">`;
-    h+=`<circle cx="${sl.x}" cy="${sl.y}" r="${R}" fill="${c.bg}" stroke="#c9a84c" stroke-width="0.3"/>`;
-    h+=`<line x1="${sl.x}" y1="${sl.y-R}" x2="${sl.x}" y2="${sl.y+R}" stroke="#c9a84c" stroke-width="0.2"/>`;
-    h+=`<text x="${sl.x-R*.45}" y="${sl.y+0.6}" text-anchor="middle" fill="#f5f0e8" font-size="1.6" font-weight="bold" font-family="Georgia">${v[0]}</text>`;
-    h+=`<text x="${sl.x+R*.45}" y="${sl.y+0.6}" text-anchor="middle" fill="#f5f0e8" font-size="1.6" font-weight="bold" font-family="Georgia">${v[1]}</text>`;
+    h+=`<circle cx="${p.x}" cy="${p.y}" r="${R}" fill="${c.bg}" stroke="#c9a84c" stroke-width="0.3"/>`;
+    h+=`<line x1="${p.x}" y1="${p.y-R}" x2="${p.x}" y2="${p.y+R}" stroke="#c9a84c" stroke-width="0.2"/>`;
+    h+=`<text x="${p.x-R*.45}" y="${p.y+0.6}" text-anchor="middle" fill="#f5f0e8" font-size="1.6" font-weight="bold" font-family="Georgia">${v[0]}</text>`;
+    h+=`<text x="${p.x+R*.45}" y="${p.y+0.6}" text-anchor="middle" fill="#f5f0e8" font-size="1.6" font-weight="bold" font-family="Georgia">${v[1]}</text>`;
     h+=`</g>`;
   }
 
-  // Control markers
+  // Control markers on board
   for(let i=0;i<S.markers.length;i++) {
     const m=S.markers[i];
+    const p=pctToVB(m.x,m.y);
     h+=`<g class="hit" data-mi="${i}">`;
-    h+=`<circle cx="${m.x}" cy="${m.y}" r="1.4" fill="${P[m.pl].bg}" stroke="#c9a84c" stroke-width="0.3"/>`;
-    h+=`<text x="${m.x}" y="${m.y+0.5}" text-anchor="middle" fill="#c9a84c" font-size="1.2" font-weight="bold" font-family="Georgia">M</text>`;
+    h+=`<circle cx="${p.x}" cy="${p.y}" r="1.4" fill="${P[m.pl].bg}" stroke="#c9a84c" stroke-width="0.3"/>`;
+    h+=`<text x="${p.x}" y="${p.y+0.5}" text-anchor="middle" fill="#c9a84c" font-size="1.2" font-weight="bold" font-family="Georgia">M</text>`;
     h+=`</g>`;
+  }
+
+  // Supply markers (unplaced) — shown at their supply positions on the board
+  for(let pl=0;pl<2;pl++) {
+    const positions=MARKER_SUPPLY[pl];
+    for(let mi=0;mi<S.mrem[pl]&&mi<positions.length;mi++) {
+      const pos=positions[mi];
+      const p=pctToVB(pos.x,pos.y);
+      h+=`<circle class="hit" cx="${p.x}" cy="${p.y}" r="1.3"
+        fill="${P[pl].bg}" stroke="#c9a84c" stroke-width="0.2" opacity="0.9"
+        data-supply="${pl}-${mi}"/>`;
+    }
   }
 
   // Bonus tokens
   for(const b of S.bonus) {
     if(b.claimed) continue;
     const pr=PROVS[b.pi];
-    h+=`<circle class="hit" cx="${pr.x}" cy="${pr.y}" r="1.6" fill="#d4b44c" stroke="#8a7428" stroke-width="0.2" data-bi="${b.pi}"/>`;
-    h+=`<text x="${pr.x}" y="${pr.y+0.5}" text-anchor="middle" font-size="1.4" pointer-events="none">${BONUS_ICONS[b.type]||'?'}</text>`;
+    const p=pctToVB(pr.x,pr.y);
+    h+=`<circle class="hit" cx="${p.x}" cy="${p.y}" r="1.6" fill="#d4b44c" stroke="#8a7428" stroke-width="0.2" data-bi="${b.pi}"/>`;
+    h+=`<text x="${p.x}" y="${p.y+0.5}" text-anchor="middle" font-size="1.4" pointer-events="none">${BONUS_ICONS[b.type]||'?'}</text>`;
   }
 
   svg.innerHTML=h;
@@ -857,8 +941,18 @@ function renderOverlay() {
   svg.querySelectorAll('[data-bi]').forEach(el=>{
     el.addEventListener('click',e=>{
       e.stopPropagation();
-      const b=S.bonus.find(b=>b.pi===+el.dataset.bi);
-      if(b&&!b.claimed){b.claimed=true;autosave();render();}
+      const bt=S.bonus.find(b=>b.pi===+el.dataset.bi);
+      if(bt&&!bt.claimed){bt.claimed=true;autosave();render();}
+    });
+  });
+  // Supply marker tap — pick up for placement
+  svg.querySelectorAll('[data-supply]').forEach(el=>{
+    el.addEventListener('click',e=>{
+      e.stopPropagation();
+      const [pl]=el.dataset.supply.split('-').map(Number);
+      if(pl!==S.cp) return; // can only pick up your own
+      S.selMarker=true; S.sel=-1;
+      render();
     });
   });
 }
@@ -910,7 +1004,8 @@ document.addEventListener('keydown',e=>{
 window.addEventListener('resize',()=>render());
 
 const img=document.getElementById('board-img');
-if(img.complete) init(); else img.onload=init;
+function onImgReady() { setupSvgViewBox(); init(); }
+if(img.complete) onImgReady(); else img.onload=onImgReady;
 img.onerror=()=>{
   document.getElementById('board-wrap').innerHTML=
     '<div style="color:#c9a84c;text-align:center;padding:40px"><h2>Board image not found</h2><p>Place caesar-board.jpg next to this HTML file</p></div>';

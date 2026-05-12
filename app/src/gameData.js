@@ -80,22 +80,61 @@ export const MARKER_SUPPLY = [
 ];
 
 export const PLAYERS = [
-  { name: 'Caesar', bg: '#8b1a1a', hi: '#e55' },
-  { name: 'Pompey', bg: '#1a3a6b', hi: '#5a9ee5' },
+  { name: 'Caesar', bg: '#E93034', hi: '#E93034' },
+  { name: 'Pompey', bg: '#5577BB', hi: '#5577BB' },
 ];
 
-export const TYPE_ICONS = { Sword:'⚔️', Shield:'🛡️', Ship:'⚓', Wild:'☘️' };
+export const TYPE_ICONS = { Sword:'⚔️', Shield:'🛡️', Ship:'⚓', 'Ship+Shield':'⚓🛡️', Wreath:'🌿' };
 export const BONUS_ICONS = { Tactics:'⚡', Wealth:'💰', Might:'💪', Senate:'🏛️' };
+export const BONUS_IMAGES = {
+  Tactics: '/tokens/bonus_tactics.png',
+  Wealth: '/tokens/bonus_wealth.png',
+  Might: '/tokens/bonus_might.png',
+  Senate: '/tokens/bonus_senate.png',
+};
 
 export function createTokenSet() {
-  const t = [];
-  for (const type of ['Sword','Shield']) {
-    t.push({type,v:[5,1]},{type,v:[5,1]},{type,v:[4,2]},{type,v:[4,2]},{type,v:[3,3]});
-  }
-  t.push({type:'Ship',v:[5,1]},{type:'Ship',v:[4,2]},{type:'Ship',v:[3,3]});
-  t.push({type:'Wild',v:[3,1]},{type:'Wild',v:[2,2]},{type:'Wild',v:[2,2]});
-  return t;
+  return [
+    // Shield (4)
+    { type:'Shield', v:[0,6] },
+    { type:'Shield', v:[1,5] },
+    { type:'Shield', v:[2,4] },
+    { type:'Shield', v:[3,3] },
+    // Ship+Shield — plays on ship OR shield slots (1)
+    { type:'Ship+Shield', v:[4,4] },
+    // Ship (4)
+    { type:'Ship', v:[0,6] },
+    { type:'Ship', v:[1,5] },
+    { type:'Ship', v:[2,4] },
+    { type:'Ship', v:[3,3] },
+    // Sword (5)
+    { type:'Sword', v:[0,6] },
+    { type:'Sword', v:[0,7] },
+    { type:'Sword', v:[1,5] },
+    { type:'Sword', v:[2,4] },
+    { type:'Sword', v:[3,3] },
+    // Wreath — wild, plays on any slot (5)
+    { type:'Wreath', v:[0,4] },
+    { type:'Wreath', v:[1,3] },
+    { type:'Wreath', v:[2,2] },
+    { type:'Wreath', v:[2,2] },
+    { type:'Wreath', v:[3,3] },
+  ];
 }
+
+export function tokenImage(type, v, player = 0) {
+  const prefix = player === 0 ? 'red' : 'pur';
+  const tname = type === 'Ship+Shield' ? 'shipshield' : type.toLowerCase();
+  return `/tokens/${prefix}_${tname}_${v[0]}_${v[1]}.png`;
+}
+
+export const ALL_TOKEN_IMAGES = createTokenSet().reduce((acc, t) => {
+  for (const p of [0, 1]) {
+    const src = tokenImage(t.type, t.v, p);
+    if (!acc.includes(src)) acc.push(src);
+  }
+  return acc;
+}, []);
 
 export function shuffle(arr) {
   const a = [...arr];

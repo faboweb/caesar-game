@@ -1,0 +1,5 @@
+/tokens/*
+  Cache-Control: public, max-age=86400, immutable
+
+/caesar-board.jpg
+  Cache-Control: public, max-age=86400, immutable
